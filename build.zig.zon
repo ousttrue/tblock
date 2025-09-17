@@ -1,0 +1,12 @@
+.{
+    .name = .tblock,
+    .version = "0.0.0",
+    .fingerprint = 0x64488e4b2608cd97, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
