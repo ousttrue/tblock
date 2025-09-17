@@ -6,27 +6,77 @@ const Platform = if (builtin.os.tag == .windows)
 else
     @import("PlatformLinux.zig");
 
-pub fn main() !void {
-    var buf: [128]u8 = undefined;
-    const stdout = std.fs.File.stdout();
-    var stdout_writer = stdout.writer(&buf);
-    const stdout_interface = &stdout_writer.interface;
+const App = struct {
+    writer: std.fs.File.Writer,
+    is_running: bool = true,
+    buf: [128]u8 = undefined,
 
-    const stdin = std.fs.File.stdin();
+    fn init(allocator: std.mem.Allocator, output: std.fs.File) !*@This() {
+        var self = try allocator.create(@This());
+        self.* = .{
+            .writer = output.writer(&self.buf),
+        };
 
-    if (std.fs.File.stdin().isTty()) {
-        _ = try stdout_interface.write("is tty\n");
-        if (Platform.setupStdout(stdout)) {
-            _ = try stdout_interface.write("\x1b[31mRED \x1b[32mGREEN \x1b[34mBLUE\x1b[0m\n");
-        } else {
-            _ = try stdout_interface.write("Failed to enable virtual terminal\n");
-        }
-    } else {
-        _ = try stdout_interface.write("not tty\n");
+        return self;
     }
 
-    const i = try Platform.blockInput(stdin);
-    try stdout_interface.print("{}\n", .{i});
+    fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 
-    try stdout_interface.flush();
+    fn write(self: *@This(), str: []const u8) !void {
+        _ = try self.writer.interface.write(str);
+        try self.writer.interface.flush();
+    }
+
+    fn print(self: *@This(), comptime fmt: []const u8, args: anytype) !void {
+        try self.writer.interface.print(fmt, args);
+        try self.writer.interface.flush();
+    }
+
+    fn dispatch(self: *@This(), ch: u8) !void {
+        if (ch == 'q') {
+            self.is_running = false;
+        }
+        try self.print("{}\n", .{ch});
+    }
+};
+
+pub fn main() !void {
+    //
+    // initialize
+    //
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    const stdin = std.fs.File.stdin();
+    const stdout = std.fs.File.stdout();
+
+    if (stdin.isTty()) {
+        if (Platform.setupStdout(stdout)) {
+            //
+        } else {
+            _ = try stdout.write("Failed to enable virtual terminal\n");
+            return;
+        }
+    } else {
+        _ = try stdout.write("not tty\n");
+        return;
+    }
+
+    const allocator = gpa.allocator();
+    var app = try App.init(allocator, stdout);
+    defer app.deinit(allocator);
+
+    //
+    // main loop
+    //
+    while (app.is_running) {
+        // render
+        try app.write("\x1b[31mRED \x1b[32mGREEN \x1b[34mBLUE\x1b[0m\n");
+
+        // input
+        const i = try Platform.blockInput(stdin);
+        try app.dispatch(i);
+    }
 }
