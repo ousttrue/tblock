@@ -1,19 +1,115 @@
 const std = @import("std");
 
 pub fn setupStdout(stdout: std.fs.File) bool {
-    return enable_virtual_terminal_processing(stdout.handle);
+    return enableVirtualTerminalProcessing(stdout.handle);
 }
 
-fn enable_virtual_terminal_processing(handle: std.os.windows.HANDLE) bool {
+fn enableVirtualTerminalProcessing(stdout_handle: std.os.windows.HANDLE) bool {
     var mode: u32 = undefined;
-    if (std.os.windows.kernel32.GetConsoleMode(handle, &mode) == std.os.windows.FALSE) {
+    if (std.os.windows.kernel32.GetConsoleMode(stdout_handle, &mode) == std.os.windows.FALSE) {
         return false;
     }
     if (std.os.windows.kernel32.SetConsoleMode(
-        handle,
+        stdout_handle,
         mode | std.os.windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING,
     ) == std.os.windows.FALSE) {
         return false;
     }
     return true;
 }
+
+pub fn blockInput(stdin: std.fs.File) !u8 {
+    var records: [1]INPUT_RECORD = undefined;
+    var cNumRead: u32 = undefined;
+
+    while (true) {
+        if (ReadConsoleInputW(stdin.handle, &records, records.len, &cNumRead) == 0) {
+            return error.ReadConsoleInputW;
+        }
+        for (records) |r| {
+            switch (r.EventType) {
+                .KEY_EVENT => {
+                    if (r.Event.KeyEvent.uChar.AsciiChar == 13) {
+                        continue;
+                    }
+                    return r.Event.KeyEvent.uChar.AsciiChar;
+                },
+                .MOUSE_EVENT => {},
+                .WINDOW_BUFFER_SIZE_EVENT => {},
+                .MENU_EVENT => {},
+                .FOCUS_EVENT => {},
+            }
+        }
+    }
+
+    unreachable;
+}
+
+pub extern "kernel32" fn ReadConsoleInputW(
+    hConsoleInput: ?std.os.windows.HANDLE,
+    lpBuffer: [*]INPUT_RECORD,
+    nLength: u32,
+    lpNumberOfEventsRead: ?*u32,
+) callconv(.winapi) std.os.windows.BOOL;
+
+pub const COORD = extern struct {
+    X: i16,
+    Y: i16,
+};
+
+pub const SMALL_RECT = extern struct {
+    Left: i16,
+    Top: i16,
+    Right: i16,
+    Bottom: i16,
+};
+
+pub const KEY_EVENT_RECORD = extern struct {
+    bKeyDown: std.os.windows.BOOL,
+    wRepeatCount: u16,
+    wVirtualKeyCode: u16,
+    wVirtualScanCode: u16,
+    uChar: extern union {
+        UnicodeChar: u16,
+        AsciiChar: std.os.windows.CHAR,
+    },
+    dwControlKeyState: u32,
+};
+
+pub const MOUSE_EVENT_RECORD = extern struct {
+    dwMousePosition: COORD,
+    dwButtonState: u32,
+    dwControlKeyState: u32,
+    dwEventFlags: u32,
+};
+
+pub const WINDOW_BUFFER_SIZE_RECORD = extern struct {
+    dwSize: COORD,
+};
+
+pub const MENU_EVENT_RECORD = extern struct {
+    dwCommandId: u32,
+};
+
+pub const FOCUS_EVENT_RECORD = extern struct {
+    bSetFocus: std.os.windows.BOOL,
+};
+
+pub const EVENT_TYPE = enum(u16) {
+    KEY_EVENT = 0x0001,
+    MOUSE_EVENT = 0x0002,
+    WINDOW_BUFFER_SIZE_EVENT = 0x0004,
+    MENU_EVENT = 0x0008,
+    FOCUS_EVENT = 0x0010,
+};
+
+pub const INPUT_RECORD = extern struct {
+    EventType: EVENT_TYPE,
+    Event: extern union {
+        KeyEvent: KEY_EVENT_RECORD,
+        MouseEvent: MOUSE_EVENT_RECORD,
+        WindowBufferSizeEvent: WINDOW_BUFFER_SIZE_RECORD,
+        MenuEvent: MENU_EVENT_RECORD,
+        FocusEvent: FOCUS_EVENT_RECORD,
+    },
+};

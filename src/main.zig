@@ -12,6 +12,8 @@ pub fn main() !void {
     var stdout_writer = stdout.writer(&buf);
     const stdout_interface = &stdout_writer.interface;
 
+    const stdin = std.fs.File.stdin();
+
     if (std.fs.File.stdin().isTty()) {
         _ = try stdout_interface.write("is tty\n");
         if (Platform.setupStdout(stdout)) {
@@ -22,5 +24,9 @@ pub fn main() !void {
     } else {
         _ = try stdout_interface.write("not tty\n");
     }
+
+    const i = try Platform.blockInput(stdin);
+    try stdout_interface.print("{}\n", .{i});
+
     try stdout_interface.flush();
 }
