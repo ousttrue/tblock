@@ -1,4 +1,5 @@
 const std = @import("std");
+const Input = @import("input.zig").Input;
 
 input: std.fs.File,
 output: std.fs.File,
@@ -36,11 +37,6 @@ pub fn init(allocator: std.mem.Allocator, input: std.fs.File, output: std.fs.Fil
 pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
     allocator.destroy(self);
 }
-
-pub const Input = union(enum) {
-    resize: struct { rows: i32, cols: i32 },
-    key: struct { char: u8 },
-};
 
 pub fn blockInput(self: *@This(), timeout: i32) !Input {
     _ = timeout;

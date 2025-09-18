@@ -68,6 +68,10 @@ pub fn main() !void {
 
     const platform = try Platform.init(allocator, stdin, stdout);
     defer platform.deinit(allocator);
+    {
+        const size = try platform.getTermSize();
+        std.debug.print("rows={}, cols={}\n", .{ size.rows, size.cols });
+    }
 
     var app = try App.init(allocator, stdout);
     defer app.deinit(allocator);
@@ -81,8 +85,8 @@ pub fn main() !void {
 
         // input
         switch (try platform.blockInput(-1)) {
-            .resize => |resize| {
-                try app.print("rows:{}, cols:{}\n", .{ resize.rows, resize.cols });
+            .resize => |size| {
+                try app.print("rows={}, cols={}\n", .{ size.rows, size.cols });
             },
             .key => |key| {
                 try app.dispatch(key.char);
