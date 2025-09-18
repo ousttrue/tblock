@@ -1,5 +1,7 @@
 const std = @import("std");
 
+input: std.fs.File,
+
 pub fn setupStdout(stdout: std.fs.File) bool {
     return enableVirtualTerminalProcessing(stdout.handle);
 }
@@ -18,17 +20,33 @@ fn enableVirtualTerminalProcessing(stdout_handle: std.os.windows.HANDLE) bool {
     return true;
 }
 
-pub fn blockInput(stdin: std.fs.File) !u8 {
+pub fn init(allocator: std.mem.Allocator, input: std.fs.File) !*@This() {
+    const self = try allocator.create(@This());
+
+    self.input = input;
+
+    return self;
+}
+
+pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+    allocator.destroy(self);
+}
+
+pub fn blockInput(self: *@This(), timeout: i32) !u8 {
+    _ = timeout;
     var records: [1]INPUT_RECORD = undefined;
     var cNumRead: u32 = undefined;
 
     while (true) {
-        if (ReadConsoleInputW(stdin.handle, &records, records.len, &cNumRead) == 0) {
+        if (ReadConsoleInputW(self.input.handle, &records, records.len, &cNumRead) == 0) {
             return error.ReadConsoleInputW;
         }
         for (records) |r| {
             switch (r.EventType) {
                 .KEY_EVENT => {
+                    if (r.Event.KeyEvent.bKeyDown == 0) {
+                        continue;
+                    }
                     if (r.Event.KeyEvent.uChar.AsciiChar == 13) {
                         continue;
                     }
