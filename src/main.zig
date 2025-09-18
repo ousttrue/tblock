@@ -65,6 +65,10 @@ pub fn main() !void {
     }
 
     const allocator = gpa.allocator();
+
+    const platform = try Platform.init(allocator, stdin);
+    defer platform.deinit(allocator);
+
     var app = try App.init(allocator, stdout);
     defer app.deinit(allocator);
 
@@ -76,7 +80,7 @@ pub fn main() !void {
         try app.write("\x1b[31mRED \x1b[32mGREEN \x1b[34mBLUE\x1b[0m\n");
 
         // input
-        const i = try Platform.blockInput(stdin);
+        const i = try platform.blockInput(-1);
         try app.dispatch(i);
     }
 }
