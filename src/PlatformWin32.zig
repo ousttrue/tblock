@@ -1,6 +1,8 @@
 const std = @import("std");
 
 input: std.fs.File,
+output: std.fs.File,
+counter: u32 = 0,
 
 pub fn setupStdout(stdout: std.fs.File) bool {
     return enableVirtualTerminalProcessing(stdout.handle);
@@ -20,10 +22,13 @@ fn enableVirtualTerminalProcessing(stdout_handle: std.os.windows.HANDLE) bool {
     return true;
 }
 
-pub fn init(allocator: std.mem.Allocator, input: std.fs.File) !*@This() {
+pub fn init(allocator: std.mem.Allocator, input: std.fs.File, output: std.fs.File) !*@This() {
     const self = try allocator.create(@This());
 
-    self.input = input;
+    self.* = .{
+        .input = input,
+        .output = output,
+    };
 
     return self;
 }
@@ -32,30 +37,51 @@ pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
     allocator.destroy(self);
 }
 
-pub fn blockInput(self: *@This(), timeout: i32) !u8 {
-    _ = timeout;
-    var records: [1]INPUT_RECORD = undefined;
-    var cNumRead: u32 = undefined;
+pub const Input = union(enum) {
+    resize: struct { rows: i32, cols: i32 },
+    key: struct { char: u8 },
+};
 
-    while (true) {
-        if (ReadConsoleInputW(self.input.handle, &records, records.len, &cNumRead) == 0) {
-            return error.ReadConsoleInputW;
-        }
-        for (records) |r| {
-            switch (r.EventType) {
-                .KEY_EVENT => {
-                    if (r.Event.KeyEvent.bKeyDown == 0) {
-                        continue;
-                    }
-                    if (r.Event.KeyEvent.uChar.AsciiChar == 13) {
-                        continue;
-                    }
-                    return r.Event.KeyEvent.uChar.AsciiChar;
-                },
-                .MOUSE_EVENT => {},
-                .WINDOW_BUFFER_SIZE_EVENT => {},
-                .MENU_EVENT => {},
-                .FOCUS_EVENT => {},
+pub fn blockInput(self: *@This(), timeout: i32) !Input {
+    _ = timeout;
+    defer self.counter += 1;
+
+    if (self.counter == 0) {
+        var csbi: std.os.windows.CONSOLE_SCREEN_BUFFER_INFO = undefined;
+        _ = std.os.windows.kernel32.GetConsoleScreenBufferInfo(self.output.handle, &csbi);
+        return .{ .resize = .{
+            .rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1,
+            .cols = csbi.srWindow.Right - csbi.srWindow.Left + 1,
+        } };
+    } else {
+        var records: [1]INPUT_RECORD = undefined;
+        var cNumRead: u32 = undefined;
+
+        while (true) {
+            if (ReadConsoleInputW(self.input.handle, &records, records.len, &cNumRead) == 0) {
+                return error.ReadConsoleInputW;
+            }
+            for (records) |r| {
+                switch (r.EventType) {
+                    .KEY_EVENT => {
+                        if (r.Event.KeyEvent.bKeyDown == 0) {
+                            continue;
+                        }
+                        if (r.Event.KeyEvent.uChar.AsciiChar == 13) {
+                            continue;
+                        }
+                        return .{ .key = .{ .char = r.Event.KeyEvent.uChar.AsciiChar } };
+                    },
+                    .MOUSE_EVENT => {},
+                    .WINDOW_BUFFER_SIZE_EVENT => {
+                        return .{ .resize = .{
+                            .rows = r.Event.WindowBufferSizeEvent.dwSize.Y,
+                            .cols = r.Event.WindowBufferSizeEvent.dwSize.X,
+                        } };
+                    },
+                    .MENU_EVENT => {},
+                    .FOCUS_EVENT => {},
+                }
             }
         }
     }

@@ -7,6 +7,7 @@
 ## Input
 
 - https://learn.microsoft.com/en-us/windows/console/readconsoleinput
+- https://viewsourcecode.org/snaptoken/kilo/02.enteringRawMode.html
 
 ## Output
 

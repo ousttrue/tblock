@@ -42,6 +42,7 @@ pub fn blockInput(self: *@This(), timeout_ms: i32) !u8 {
         if (event_count == 0) {
             continue;
         }
+
         for (self.events[0..event_count]) |ev| {
             var read_buffer: [1]u8 = undefined;
             const bytes_read = std.os.linux.read(ev.data.fd, read_buffer[0..], read_buffer.len);
